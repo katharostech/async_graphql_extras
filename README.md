@@ -7,7 +7,7 @@
 Experimental helper macros for use with [`async_graphql`].
 
 ## Example
-```norun
+```rust no_run
 use std::convert::Infallible;
 use async_graphql::*;
 use async_graphql_extras::graphql_object;
@@ -19,13 +19,13 @@ struct Query;
 
 
 /// Information about the user
-#[graphql_object]
+##[graphql_object]
 pub struct UserData {
     username: String,
     display_name: String,
 }
 
-#[Object]
+##[Object]
 impl Query {
     /// Ping endpoint that returns the same object as the input
     async fn ping(&self, user_input: UserDataInput) -> UserData {
@@ -36,7 +36,7 @@ impl Query {
     }
 }
 
-#[tokio::main]
+##[tokio::main]
 async fn main() {
     let schema = Schema::new(Query, EmptyMutation, EmptySubscription);
     let filter = async_graphql_warp::graphql(schema).and_then(

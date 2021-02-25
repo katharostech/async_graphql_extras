@@ -1,7 +1,7 @@
 //! Experimental helper macros for use with [`async_graphql`].
 //!
 //! # Example
-//! ```no_run
+//! ```rust no_run
 //! use std::convert::Infallible;
 //! use async_graphql::*;
 //! use async_graphql_extras::graphql_object;
