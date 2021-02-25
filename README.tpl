@@ -6,5 +6,4 @@
 
 {{readme}}
 
-[`Read`]: https://doc.rust-lang.org/stable/std/io/trait.Read.html
-[`Write`]: https://doc.rust-lang.org/stable/std/io/trait.Write.html
+[`async_graphql`]: https://docs.rs/async_graphql

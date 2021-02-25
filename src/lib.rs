@@ -1,7 +1,7 @@
 //! Experimental helper macros for use with [`async_graphql`].
 //!
 //! # Example
-//! ```rust no_run
+//! ```no_run
 //! use std::convert::Infallible;
 //! use async_graphql::*;
 //! use async_graphql_extras::graphql_object;
@@ -22,6 +22,9 @@
 //! #[Object]
 //! impl Query {
 //!     /// Ping endpoint that returns the same object as the input
+//!     // here the `user_input` arg has type `UserDataInput` which is the
+//!     // corresponding input type to `UserData` which was automatically
+//!     // generated.
 //!     async fn ping(&self, user_input: UserDataInput) -> UserData {
 //!         UserData {
 //!             username: user_input.username,
@@ -44,6 +47,7 @@
 //!     );
 //!     warp::serve(filter).run(([0, 0, 0, 0], 8000)).await;
 //! }
+//! ```
 
 extern crate proc_macro;
 

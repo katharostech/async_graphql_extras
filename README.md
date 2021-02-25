@@ -7,7 +7,7 @@
 Experimental helper macros for use with [`async_graphql`].
 
 ## Example
-```rust no_run
+```rust
 use std::convert::Infallible;
 use async_graphql::*;
 use async_graphql_extras::graphql_object;
@@ -19,15 +19,18 @@ struct Query;
 
 
 /// Information about the user
-##[graphql_object]
+#[graphql_object]
 pub struct UserData {
     username: String,
     display_name: String,
 }
 
-##[Object]
+#[Object]
 impl Query {
     /// Ping endpoint that returns the same object as the input
+    // here the `user_input` arg has type `UserDataInput` which is the
+    // corresponding input type to `UserData` which was automatically
+    // generated.
     async fn ping(&self, user_input: UserDataInput) -> UserData {
         UserData {
             username: user_input.username,
@@ -36,7 +39,7 @@ impl Query {
     }
 }
 
-##[tokio::main]
+#[tokio::main]
 async fn main() {
     let schema = Schema::new(Query, EmptyMutation, EmptySubscription);
     let filter = async_graphql_warp::graphql(schema).and_then(
@@ -50,6 +53,6 @@ async fn main() {
     );
     warp::serve(filter).run(([0, 0, 0, 0], 8000)).await;
 }
+```
 
-[`Read`]: https://doc.rust-lang.org/stable/std/io/trait.Read.html
-[`Write`]: https://doc.rust-lang.org/stable/std/io/trait.Write.html
+[`async_graphql`]: https://docs.rs/async_graphql
