@@ -11,14 +11,14 @@ struct Query;
 /// Information about the user
 #[graphql_object(
     // Custom doc string for generated `UserDataInput` struct
-    input_object_doc = "Input for user information data",
+    input_type_doc = "Input for user information data",
 )]
 pub struct UserData {
     username: String,
     display_name: String,
 
     // Indicate that this is also a `graphql_object`
-    #[graphql_object(nested)]
+    #[graphql_object(input_type = "UserFavoritesInput")]
     favorites: UserFavorites,
 }
 

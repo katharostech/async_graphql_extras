@@ -23,6 +23,17 @@ struct Query;
 pub struct UserData {
     username: String,
     display_name: String,
+    // You can set a custom type to use for fields in the input mode
+    #[graphql_object(input_type = "InputFavorites")]
+    favorites: Favorites
+}
+
+#[graphql_object(
+    // You can override the default input type name
+    input_type_name="InputFavorites"
+)]
+pub struct Favorites {
+    food: String,
 }
 
 #[Object]
@@ -32,10 +43,7 @@ impl Query {
     // corresponding input type to `UserData` which was automatically
     // generated.
     async fn ping(&self, user_input: UserDataInput) -> UserData {
-        UserData {
-            username: user_input.username,
-            display_name: user_input.display_name,
-        }
+        user_input.into()
     }
 }
 

@@ -17,6 +17,17 @@
 //! pub struct UserData {
 //!     username: String,
 //!     display_name: String,
+//!     // You can set a custom type to use for fields in the input mode
+//!     #[graphql_object(input_type = "InputFavorites")]
+//!     favorites: Favorites
+//! }
+//!
+//! #[graphql_object(
+//!     // You can override the default input type name
+//!     input_type_name="InputFavorites"
+//! )]
+//! pub struct Favorites {
+//!     food: String,
 //! }
 //!
 //! #[Object]
@@ -26,10 +37,7 @@
 //!     // corresponding input type to `UserData` which was automatically
 //!     // generated.
 //!     async fn ping(&self, user_input: UserDataInput) -> UserData {
-//!         UserData {
-//!             username: user_input.username,
-//!             display_name: user_input.display_name,
-//!         }
+//!         user_input.into()
 //!     }
 //! }
 //!
@@ -55,17 +63,19 @@ use darling::{FromField, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, AttributeArgs, ItemStruct, Type};
+use syn::{parse_macro_input, AttributeArgs, ItemStruct, Path, TypePath};
 
 /// Options to the [`graphql_object`] macro
-#[derive(Debug, FromMeta)]
+#[derive(Debug, FromMeta, Default)]
+#[darling(default)]
 struct GraphqlObjectMetaArgs {
     /// Customized doc string for the InputObject version of the struct
-    #[darling(default)]
-    input_object_doc: Option<String>,
+    input_type_doc: Option<String>,
+
+    /// The suffix to use for the input type
+    input_type_name: Option<String>,
 
     /// Skips deriving `SimpleObject` on the struct so that the user can do it manually
-    #[darling(default)]
     skip_derive_simple_object: bool,
 }
 
@@ -73,10 +83,10 @@ struct GraphqlObjectMetaArgs {
 #[derive(Debug, FromField)]
 #[darling(attributes(graphql_object))]
 struct GraphqlObjectFieldArgs {
-    /// Indicates that this field is another graphql object and should have its type transformed to
-    /// match while implementing `InputObject` etc.
+    /// Specifies and alternate type to use when this is used as an input object. Must implement
+    /// `Into` for the non-input object version of the type.
     #[darling(default)]
-    nested: bool,
+    input_type: Option<Path>,
 }
 
 /// Take a result and return token stream errors if it is an error
@@ -105,33 +115,51 @@ pub fn graphql_object(args: TokenStream, input: TokenStream) -> TokenStream {
     // Create output buffer
     let mut out = quote! {};
 
+    // If this is a struct
+    // if let Some(reference_struct) = utils::get_item_struct(reference_item.clone()) {
     // Generate the `SimpleObject` version of the struct
-    let o = generate_output_object(&reference_struct, &options);
+    let o = generate_output_struct(&reference_struct, &options);
     out = quote! {
         #out
         #o
     };
 
     // Generate the `InputObject` version of the struct
-    let o = generate_input_object(&reference_struct, &options);
+    let o = generate_input_struct(&reference_struct, &options);
     out = quote! {
         #out
         #o
     };
 
+    // // If this is an enum
+    // } else if let Some(reference_enum) = utils::get_item_enum(reference_item.clone()) {
+    //     // Generate the `Union` enum for use as a GraphQL output
+    //     let o = generate_output_enum(&reference_enum, &options);
+    //     out = quote! {
+    //         #out
+    //         #o
+    //     };
+
+    // // Throw an error for everything else
+    // } else {
+    //     out = quote! {
+    //         compile_error!("#[graphql_object] annotation can only be applied to structs and enums")
+    //     }
+    // }
+
     out.into()
 }
 
 /// Generate the `SimpleObject` version of a struct
-fn generate_output_object(
+fn generate_output_struct(
     reference_struct: &ItemStruct,
     options: &GraphqlObjectMetaArgs,
 ) -> TokenStream2 {
     // Start with a copy of the reference struct
-    let mut object_struct = reference_struct.clone();
+    let mut output_obj_struct = reference_struct.clone();
 
     // Remove any `io_object` meta tags from the fields
-    for field in &mut object_struct.fields {
+    for field in &mut output_obj_struct.fields {
         utils::strip_annotations_with_path(format_ident!("graphql_object"), &mut field.attrs);
     }
 
@@ -146,12 +174,12 @@ fn generate_output_object(
     // output the struct unchanged, but with the extra simple object derive
     quote! {
         #extra_derive
-        #object_struct
+        #output_obj_struct
     }
 }
 
 /// Generate the `InputObject` of a generated struct
-fn generate_input_object(
+fn generate_input_struct(
     reference_struct: &ItemStruct,
     options: &GraphqlObjectMetaArgs,
 ) -> TokenStream2 {
@@ -160,10 +188,16 @@ fn generate_input_object(
 
     // ouput a copy of the struct for the input type
     let mut input_obj_struct = reference_struct.clone();
-    input_obj_struct.ident = format_ident!("{}{}", input_obj_struct.ident, "Input");
+    input_obj_struct.ident = format_ident!(
+        "{}",
+        &options
+            .input_type_name
+            .as_ref()
+            .unwrap_or(&format!("{}Input", reference_struct.ident))
+    );
 
     // Update the input struct doc string if necessary
-    if let Some(input_doc) = &options.input_object_doc {
+    if let Some(input_doc) = &options.input_type_doc {
         if let Some(doc) = input_obj_struct
             .attrs
             .iter_mut()
@@ -181,14 +215,8 @@ fn generate_input_object(
         let args = handle_darling_errors!(GraphqlObjectFieldArgs::from_field(&field));
 
         // If this is a nested object that should be transformed to it's input object equivalent
-        if args.nested {
-            // Transform the type of the arg from `MyType` to `MyTypeInput`
-            if let Type::Path(path) = &mut field.ty {
-                let ident = &mut path.path.segments.last_mut().unwrap().ident;
-                *ident = format_ident!("{}{}", ident, "Input");
-            } else {
-                panic!("Cannot add #[object] annotation to type: {:?}", field.ty);
-            }
+        if let Some(path) = args.input_type {
+            field.ty = TypePath { qself: None, path }.into();
         }
 
         // Remove any `io_object` annotation left over on the field
@@ -239,6 +267,25 @@ fn generate_input_object(
     out.into()
 }
 
+// /// Generate the `SimpleObject` version of a struct
+// fn generate_output_enum(
+//     reference_enum: &ItemEnum,
+//     _options: &GraphqlObjectMetaArgs,
+// ) -> TokenStream2 {
+//     // Start with a copy of the reference struct
+//     let mut output_obj_enum = reference_enum.clone();
+
+//     let extra_derive = quote! {
+//         #[derive(::async_graphql::Union)]
+//     };
+
+//     // output the struct unchanged, but with the extra simple object derive
+//     quote! {
+//         #extra_derive
+//         #output_obj_enum
+//     }
+// }
+
 mod utils {
     use syn::{Attribute, Ident};
 
@@ -252,4 +299,36 @@ mod utils {
 
         *attrs = new_attrs;
     }
+
+    // pub fn get_item_struct(derive_input: DeriveInput) -> Option<ItemStruct> {
+    //     match derive_input.data {
+    //         syn::Data::Struct(reference_struct) => Some(ItemStruct {
+    //             attrs: derive_input.attrs,
+    //             generics: derive_input.generics,
+    //             ident: derive_input.ident,
+    //             vis: derive_input.vis,
+    //             fields: reference_struct.fields,
+    //             semi_token: reference_struct.semi_token,
+    //             struct_token: reference_struct.struct_token,
+    //         }),
+    //         syn::Data::Enum(_) => None,
+    //         syn::Data::Union(_) => None,
+    //     }
+    // }
+
+    // pub fn get_item_enum(derive_input: DeriveInput) -> Option<ItemEnum> {
+    //     match derive_input.data {
+    //         syn::Data::Enum(reference_enum) => Some(ItemEnum {
+    //             attrs: derive_input.attrs,
+    //             generics: derive_input.generics,
+    //             ident: derive_input.ident,
+    //             vis: derive_input.vis,
+    //             enum_token: reference_enum.enum_token,
+    //             brace_token: reference_enum.brace_token,
+    //             variants: reference_enum.variants,
+    //         }),
+    //         syn::Data::Struct(_) => None,
+    //         syn::Data::Union(_) => None,
+    //     }
+    // }
 }
